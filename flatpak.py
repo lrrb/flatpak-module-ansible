@@ -4,25 +4,28 @@
 DOCUMENTATION = '''
 ---
 module: flatpak
-version_added: ""
+version_added: "0.0.1"
+supports_check_mode: yes
+author: 
+    - John Kwiatkoski (@jaykayy)
 short_description: install and remove flatpaks
 description:
     - The flatpak module allows users to manage installation and removal of flatpaks.
 options:
   name:
     description:
-      - name of the flatpak in "location/name" format.
+      - Name of the flatpak in `https://...` url format. Reverse dns format can optionally be used with `state=absent` ex: name=org.gnome.gedit.
     required: false
-    default: null
+    default: ''
     aliases: []
   remote:
     description:
       - The flatpak remote repo to be used in the flatpak operation.
     required: false
-    default: 
+    default: '' 
   state:
     description:
-      - present will install the flatpak and absent will remove the flatpak.
+      - Set to `present` will install the flatpak and/or remote. Set to `absent` will remove the flatpak and/or remote.
     required: false
     default: present
 '''
@@ -41,7 +44,6 @@ EXAMPLES = '''
     remote: https://sdk.gnome.org/gnome-apps.flatpakrepo
     state: absent 
 
-
 #remove the gedit flatpak and remote
 -- flatpak:
     name: org.gnome.gedit
@@ -53,6 +55,33 @@ EXAMPLES = '''
     name: org.gnome.gedit
     state: absent 
 
+#Example Output
+
+#failure:
+{
+    "failed": true, 
+    "invocation": {
+        "module_args": {
+            "name": "htt", 
+            "remote": "https://sdk.gnome.org/gnome.flatpakrepo", 
+            "state": "present"
+        }
+    }, 
+    "msg": "error while installing flatpak htt", 
+    "reason": "error: Error opening file /home/jkwiatko/github/modules/flatpak-module-ansible/htt: No such file or directory\n"
+}
+
+#success
+{
+    "changed": true, 
+    "invocation": {
+        "module_args": {
+            "name": "https://git.gnome.org/browse/gnome-apps-nightly/plain/gedit.flatpakref", 
+            "remote": "https://sdk.gnome.org/gnome.flatpakrepo", 
+            "state": "present"
+        }
+    }
+}
 
 '''
 
@@ -61,16 +90,20 @@ import json
 import subprocess
 
 
-
-#module.fail_json(msg="Something fatal happened")
-
-#module.exit_json(changed=True, something_else=12345)
-
 def install_flat(flat):
     command = "flatpak install -y --from {}".format(flat)
     output, error, rc = flatpak_command(command)
     if 'error' in output and 'already installed' not in output:
         return 1, output 
+    else:
+        return 0, output
+
+def uninstall_flat(flat):
+    common_name = parse_flat(flat)
+    command = "flatpak uninstall {}".format(common_name)
+    output, error, rc = flatpak_command(command)
+    if 'error' in output and 'not installed' not in output:
+        return 1, output
     else:
         return 0, output
 
@@ -94,23 +127,21 @@ def parse_flat(name):
     return common_name
 
 
-
-def uninstall_flat(flat):
-    common_name = parse_flat(flat)
-    command = "flatpak uninstall {}".format(common_name)
-    output, error, rc = flatpak_command(command)
-    if 'error' in output and 'not installed' not in output:
-        return 1, output
-    else:
-        return 0, output
-
-
 def add_remote(remote):
     remote_name = parse_remote(remote)
     command = "flatpak remote-add --if-not-exists {} {}".format(remote_name, remote)
     output, error, rc = flatpak_command(command)
     print output
     if 'error' in output:
+        return 1, output
+    else:
+        return 0, output
+
+def remove_remote(remote):
+    remote_name = parse_remote(remote)
+    command = "flatpak remote-delete --force {} ".format(remote_name)
+    output, error, rc = flatpak_command(command)
+    if 'error' in output and 'not found' not in output:
         return 1, output
     else:
         return 0, output
@@ -130,18 +161,6 @@ def is_present_flat(name):
     if  flat in output:
             return True
     return False
-
-
-
-def remove_remote(remote):
-    remote_name = parse_remote(remote)
-    command = "flatpak remote-delete --force {} ".format(remote_name)
-    output, error, rc = flatpak_command(command)
-    if 'error' in output and 'not found' not in output:
-        return 1, output
-    else:
-        return 0, output
-
 
 def flatpak_command(command):
     process = subprocess.Popen(command.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)

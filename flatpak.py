@@ -117,13 +117,18 @@ def parse_remote(remote):
 
 def parse_flat(name):
     if 'http://' in name or 'https://' in name:
-       app = name.split('/')[-1].split('.')[0]
-       org = name.split('/')[2].split('.')
-       org_str = "{}.{}".format(org[-1],org[-2])
-       common_name = "{}.{}".format(org_str, app)
+       if name.split('/')[-1].count('.') == 3 : 
+        # url like flathub (Identifiers at the end of the url)
+        common_name=name.split('/')[-1].replace('.flatpakref','')
+       else : 
+        # url like git.gnome.org
+        app = name.split('/')[-1].split('.')[0]
+        org = name.split('/')[2].split('.')
+        org_str = "{}.{}".format(org[-1],org[-2])
+        common_name = "{}.{}".format(org_str, app)
     else:
        common_name=name
-
+       
     return common_name
 
 
